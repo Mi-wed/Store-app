@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>نظام الكاشير الذكي</title>
+<style>
+ body { font-family: 'Tahoma'; background: #f4f4f4; margin: 0; padding: 10px; }
+.container { display: flex; gap: 10px; flex-wrap: wrap; }
+.products,.cart { background: white; padding: 15px; border-radius: 10px; flex: 1; min-width: 300px; box-shadow: 0 2px 5px #ccc; }
+ h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
+ input, button { padding: 8px; margin: 5px 0; width: 95%; border-radius: 5px; border: 1px solid #ddd; }
+ button { background: #3498db; color: white; cursor: pointer; border: none; }
+ button:hover { background: #2980b9; }
+.product-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
+.product-item:hover { background: #ecf0f1; }
+.alert { background: #f39c12; color: white; padding: 10px; border-radius: 5px; margin: 5px 0; }
+ table { width: 100%; border-collapse: collapse; }
+ td, th { padding: 8px; border-bottom: 1px solid #ddd; text-align: center; }
+.total { font-size: 20px; font-weight: bold; color: #27ae60; }
+</style>
+</head>
+<body>
+<h1>🧾 نظام الكاشير الذكي</h1>
+<div class="container">
+ <div class="products">
+ <h2>المنتجات</h2>
+ <input type="text" id="search" placeholder="ابحث عن منتج بالاسم...">
+ <button onclick="showAddForm()">+ إضافة منتج جديد</button>
+ <div id="addForm" style="display:none;">
+ <input id="pName" placeholder="اسم المنتج">
+ <input id="pPrice" type="number" placeholder="السعر">
+ <input id="pQty" type="number" placeholder="الكمية">
+ <input id="pBarcode" placeholder="الباركود">
+ <button onclick="addProduct()">حفظ المنتج</button>
+ </div>
+ <div id="productList"></div>
+ <div id="alerts"></div>
+ </div>
+
+ <div class="cart">
+ <h2>الفاتورة الحالية</h2>
+ <table id="cartTable">
+ <tr><th>المنتج</th><th>الكمية</th><th>السعر</th><th>حذف</th></tr>
+ </table>
+ <p class="total">الإجمالي: <span id="total">0</span> جنيه</p>
+ <button onclick="saveInvoice()">💾 حفظ الفاتورة</button>
+ <button onclick="exportExcel()" style="background:#27ae60">📊 تصدير Excel</button>
+ <h3>الفواتير السابقة</h3>
+ <div id="invoicesList"></div>
+ </div>
+</div>
+
+<script>
+let products = JSON.parse(localStorage.getItem('products')) || [];
+let cart = [];
+let invoices = JSON.parse(localStorage.getItem('invoices')) || [];
+
+function showAddForm() {
+ document.getElementById('addForm').style.display =
+ document.getElementById('addForm').style.display == 'none'? 'block' : 'none';
+}
+
+function loadProducts() {
+ let list = document.getElementById('productList');
+ let search = document.getElementById('search').value.toLowerCase();
+ list.innerHTML = '';
+ products.filter(p => p.name.toLowerCase().includes(search)).forEach(p => {
+ list.innerHTML += `<div class="product-item" onclick="addToCart(${p.id})">
+ <span>${p.name}</span>
+ <span>${p.price} ج - متبقي: ${p.qty}</span>
+ </div>`;
+ });
+ checkLowStock();
+}
+
+function addProduct() {
+ let name = document.getElementById('pName').value;
+ if(name == '') return alert('دخل اسم المنتج');
+ let p = {
+ id: Date.now(),
+ name: name,
+ price: +document.getElementById('pPrice').value,
+ qty: +document.getElementById('pQty').value,
+ barcode: document.getElementById('pBarcode').value
+ };
+ products.push(p);
+ localStorage.setItem('products', JSON.stringify(products));
+ loadProducts();
+ document.getElementById('addForm').style.display = 'none';
+ document.getElementById('pName').value = '';
+ document.getElementById('pPrice').value = '';
+ document.getElementById('pQty').value = '';
+ document.getElementById('pBarcode').value = '';
+ alert('تم اضافة المنتج');
+}
+
+function addToCart(id) {
+ let p = products.find(x => x.id == id);
+ if(p.qty <= 0) return alert("الكمية خلصت");
+ let item = cart.find(x => x.id == id);
+ if(item) item.qty++; else cart.push({...p, qty: 1});
+ p.qty--;
+ updateCart();
+ localStorage.setItem('products', JSON.stringify(products));
+ loadProducts();
+}
+
+function removeFromCart(id) {
+ let item = cart.find(x => x.id == id);
+ let p = products.find(x => x.id == id);
+ if(p) p.qty += item.qty;
+ cart = cart.filter(x => x.id != id);
+ updateCart();
+ localStorage.setItem('products', JSON.stringify(products));
+ loadProducts();
+}
+
+function updateCart() {
+ let table = document.getElementById('cartTable');
+ table.innerHTML = '<tr><th>المنتج</th><th>الكمية</th><th>السعر</th><th>حذف</th></tr>';
+ let total = 0;
+ cart.forEach(item => {
+ total += item.price * item.qty;
+ table.innerHTML += `<tr>
+ <td>${item.name}</td>
+ <td>${item.qty}</td>
+ <td>${item.price * item.qty}</td>
+ <td><button onclick="removeFromCart(${item.id})">X</button></td>
+ </tr>`;
+ });
+ document.getElementById('total').innerText = total;
+}
+
+function checkLowStock() {
+ let alerts = document.getElementById('alerts');
+ alerts.innerHTML = '';
+ products.filter(p => p.qty <= 3 && p.qty > 0).forEach(p => {
+ alerts.innerHTML += `<div class="alert">⚠️ تنبيه: ${p.name} باقي منو ${p.qty} حبات بس</div>`;
+ });
+}
+
+function saveInvoice() {
+ if(cart.length == 0) return alert("السلة فاضية!");
+ let invoice = {
+ id: Date.now(),
+ date: new Date().toLocaleString('ar-EG'),
+ items: [...cart],
+ total: document.getElementById('total').innerText
+ };
+ invoices.push(invoice);
+ localStorage.setItem('invoices', JSON.stringify(invoices));
+ cart = [];
+ updateCart();
+ loadInvoices();
+ alert("تم حفظ الفاتورة رقم " + invoice.id);
+}
+
+function loadInvoices() {
+ let list = document.getElementById('invoicesList');
+ list.innerHTML = '';
+ invoices.slice().reverse().forEach(inv => {
+ list.innerHTML += `<div style="border:1px solid #ddd; padding:5px; margin:5px 0;">
+ <b>فاتورة #${inv.id}</b> - ${inv.date} - <b style="color:green">${inv.total} ج</b>
+ </div>`;
+ });
+}
+
+function exportExcel() {
+ if(invoices.length == 0) return alert("لا توجد فواتير");
+ let csv = 'رقم الفاتورة,التاريخ,المنتج,الكمية,السعر\n';
+ invoices.forEach(inv => {
+   inv.items.forEach(i => {
+     csv += `${inv.id},${inv.date},${i.name},${i.qty},${i.price}\n`;
+   });
+ });
+ let blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+ let a = document.createElement('a');
+ a.href = URL.createObjectURL(blob);
+ a.download = 'mabi3at.csv';
+ a.click();
+}
+
+document.getElementById('search').onkeyup = loadProducts;
+loadProducts();
+loadInvoices();
+</script>
+</body>
+</html>
+
